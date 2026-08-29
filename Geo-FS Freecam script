@@ -1,0 +1,111 @@
+// ==UserScript==
+// @name         Geo-FS Enhanced Free Cam & Replay
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Smooth free cam with mouse drag look and replay panel for Geo-FS
+// @match        https://www.geo-fs.com/geofs.php*
+// @match        https://geo-fs.com/geofs.php*
+// @grant        none
+// ==UserScript==
+
+(function() {
+    'use strict';
+
+    let active = false;
+    let keys = {};
+    let isMouseDown = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    let vel = { fwd: 0, right: 0, up: 0 };
+    let rotSens = 0.0025;
+    let smoothness = 0.08;
+
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    window.addEventListener('mousedown', e => {
+        if (active && e.button === 0) {
+            isMouseDown = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    });
+
+    window.addEventListener('mouseup', e => {
+        if (e.button === 0) isMouseDown = false;
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (active && isMouseDown && window.geofs && geofs.api && geofs.api.viewer) {
+            let dx = e.clientX - lastMouseX;
+            let dy = e.clientY - lastMouseY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+
+            let cam = geofs.api.viewer.camera;
+            cam.lookRight(dx * rotSens);
+            cam.lookDown(dy * rotSens);
+        }
+    });
+
+    function frame() {
+        if (active && window.geofs && geofs.api && geofs.api.viewer) {
+            let cam = geofs.api.viewer.camera;
+            let maxSpeed = (keys['ShiftLeft'] || keys['ShiftRight']) ? 6 : 1.2;
+
+            let targetFwd = ((keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0)) * maxSpeed;
+            let targetRight = ((keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0)) * maxSpeed;
+            let targetUp = ((keys['KeyE'] ? 1 : 0) - (keys['KeyQ'] ? 1 : 0)) * maxSpeed;
+
+            vel.fwd += (targetFwd - vel.fwd) * smoothness;
+            vel.right += (targetRight - vel.right) * smoothness;
+            vel.up += (targetUp - vel.up) * smoothness;
+
+            if (Math.abs(vel.fwd) > 0.0001) cam.moveForward(vel.fwd);
+            if (Math.abs(vel.right) > 0.0001) cam.moveRight(vel.right);
+            if (Math.abs(vel.up) > 0.0001) cam.moveUp(vel.up);
+        }
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    function initUI() {
+        if (!document.body) return setTimeout(initUI, 500);
+
+        let panel = document.createElement('div');
+        panel.style.cssText = 'position:fixed;top:15px;right:15px;z-index:99999;background:rgba(0,0,0,0.85);color:#fff;padding:12px;border-radius:8px;font-family:sans-serif;font-size:13px;box-shadow:0 4px 10px rgba(0,0,0,0.5)';
+        panel.innerHTML = `
+            <div style="font-weight:bold;margin-bottom:8px">Geo-FS Cam & Replay Tool</div>
+            <button id="camToggleBtn" style="width:100%;padding:6px;margin-bottom:6px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer">Free Cam: OFF (F2)</button>
+            <button id="replayBtn" style="width:100%;padding:6px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer">Toggle Replay (V)</button>
+            <div style="margin-top:8px;font-size:11px;color:#ccc">
+                WASD = Move | QE = Up/Down<br>
+                Left Click Drag = Look | Shift = Fast
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        let camBtn = document.getElementById('camToggleBtn');
+        let replayBtn = document.getElementById('replayBtn');
+
+        function toggleCam() {
+            active = !active;
+            camBtn.innerText = active ? 'Free Cam: ON (F2)' : 'Free Cam: OFF (F2)';
+            camBtn.style.background = active ? '#28a745' : '#007bff';
+        }
+
+        camBtn.onclick = toggleCam;
+        replayBtn.onclick = () => {
+            if (window.geofs && geofs.replayer) {
+                geofs.replayer.toggle();
+            }
+        };
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'F2') toggleCam();
+        });
+    }
+
+    initUI();
+})();
